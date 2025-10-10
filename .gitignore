@@ -1,33 +1,17 @@
-# build
 /build/
+/Desktop_*/
 /CMakeFiles/
 /CMakeCache.txt
 cmake_install.cmake
 Makefile
 *.user
-
-# Qt Creator/CLion/VSCode
-*.pro.user
-.idea/
-.vscode/
-*.qmlc
-*.jsc
-
-# Autogen
 *_autogen/
-*/Pos2_autogen/
-
-# Ninja
-/build.ninja
-/rules.ninja
-
-# OS
+/*.qmlc
+*.jsc
+.vscode/
+.idea/
 .DS_Store
-Thumbs.db
 
-# Local DB copies
+# локальные копии БД
 /localdb.sqlite
 build/**/localdb.sqlite
-
-# Python venvs (на всякий)
-.venv/

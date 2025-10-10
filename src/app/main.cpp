@@ -3,39 +3,45 @@
 #include <QQmlContext>
 
 #include "thememanager.h"
+#include "db.h"
+
 #include "apiclient.h"
 #include "authbridge.h"
 #include "loaderbridge.h"
-#include "db.h"
 
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
 
-    // Локальная БД (создать/открыть и накатить схему/сид)
-    DbLayer::openOrCreate();
+    // 1) БД: открыть/создать и, при необходимости, накатить схему/сид
+    if (!DbLayer::openOrCreate(nullptr))   // <-- ВАЖНО: без ""
+        return 1;
     DbLayer::ensureSchemaAndSeed();
 
+    // 2) Тема из локальной БД
     ThemeManager theme;
-    ApiClient api;
-    api.setBaseUrl(QUrl(QStringLiteral("https://127.0.0.1:9443")));
+    const ThemeRow initial = DbLayer::readInitialTheme();
+    theme.apply(initial);
 
-    // ВАЖНО: передаём и тему, и api в конструктор
-    AuthBridge auth(&theme, &api);
+    // 3) Сетевой слой и бриджи
+    ApiClient api;                   // по умолчанию https://127.0.0.1:9443
     LoaderBridge loader(&api);
+    AuthBridge auth(&theme, &api);   // конструктор: (ThemeManager*, ApiClient*, QObject*)
 
-    QQmlApplicationEngine eng;
-    eng.rootContext()->setContextProperty(QStringLiteral("AppTheme"),  &theme);
-    eng.rootContext()->setContextProperty(QStringLiteral("LoginCtl"),  &auth);
-    eng.rootContext()->setContextProperty(QStringLiteral("LoaderCtl"), &loader);
+    // 4) QML
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("AppTheme"), &theme);
+    engine.rootContext()->setContextProperty(QStringLiteral("LoginCtl"),  &auth);
+    engine.rootContext()->setContextProperty(QStringLiteral("BootCtl"),   &loader);
 
-    const QUrl qmlUrl(QStringLiteral("qrc:/qml/Login.qml"));
-    QObject::connect(&eng, &QQmlApplicationEngine::objectCreated,
-                     &app, [qmlUrl](QObject *obj, const QUrl &objUrl) {
-                         if (!obj && qmlUrl == objUrl)
+    const QUrl url(u"qrc:/qml/Splash.qml"_qs);
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreated, &app,
+                     [url](QObject *obj, const QUrl &objUrl) {
+                         if (!obj && url == objUrl)
                              QCoreApplication::exit(-1);
-                     }, Qt::QueuedConnection);
+                     },
+                     Qt::QueuedConnection);
 
-    eng.load(qmlUrl);
+    engine.load(url);
     return app.exec();
 }

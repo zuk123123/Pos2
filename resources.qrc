@@ -1,8 +1,14 @@
 <RCC>
-  <qresource prefix="/">
-    <file>src/qml/Login.qml</file>
+  <qresource prefix="/db">
+    <file>resources/db/localdb.sqlite</file>
+  </qresource>
+  <qresource prefix="/qml">
     <file>src/qml/Splash.qml</file>
+    <file>src/qml/Login.qml</file>
     <file>src/qml/Main.qml</file>
+    <file>src/qml/Theme.qml</file>
+  </qresource>
+  <qresource prefix="/fonts">
     <file>resources/fonts/NotoColorEmoji.ttf</file>
   </qresource>
 </RCC>
