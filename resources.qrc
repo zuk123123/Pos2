@@ -1,15 +1,21 @@
 <RCC>
-  <qresource prefix="/db">
-    <file>resources/db/localdb.sqlite</file>
-  </qresource>
+  <!-- QML -->
   <qresource prefix="/qml">
     <file>src/qml/Splash.qml</file>
     <file>src/qml/Login.qml</file>
     <file>src/qml/Main.qml</file>
     <file>src/qml/Theme.qml</file>
   </qresource>
+
+  <!-- Шрифты -->
   <qresource prefix="/fonts">
     <file>resources/fonts/NotoColorEmoji.ttf</file>
+  </qresource>
+
+  <!-- Локальная БД для первого запуска (если нужно) -->
+  <qresource prefix="/db">
+    <!-- alias, чтобы внутри ресурса называлась просто localdb.sqlite -->
+    <file alias="localdb.sqlite">resources/db/localdb.sqlite</file>
   </qresource>
 </RCC>
 

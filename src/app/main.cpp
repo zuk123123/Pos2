@@ -1,47 +1,54 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QUrl>
 
 #include "thememanager.h"
 #include "db.h"
-
 #include "apiclient.h"
-#include "authbridge.h"
 #include "loaderbridge.h"
+#include "authbridge.h"
 
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
 
-    // 1) БД: открыть/создать и, при необходимости, накатить схему/сид
-    if (!DbLayer::openOrCreate(nullptr))   // <-- ВАЖНО: без ""
+    // 1) База: открыть/создать и убедиться, что есть схема/сид
+    if (!DbLayer::openOrCreate()) {
+        qCritical("[ERR] DB open failed");
         return 1;
-    DbLayer::ensureSchemaAndSeed();
+    }
+    if (!DbLayer::ensureSchemaAndSeed()) {
+        qCritical("[ERR] DB schema/seed failed");
+        return 1;
+    }
 
-    // 2) Тема из локальной БД
+    // 2) Тема: читаем «стартовую» из БД и применяем по имени
     ThemeManager theme;
     const ThemeRow initial = DbLayer::readInitialTheme();
-    theme.apply(initial);
+    theme.applyByName(initial.name);   // <-- было theme.apply(initial);
 
-    // 3) Сетевой слой и бриджи
-    ApiClient api;                   // по умолчанию https://127.0.0.1:9443
-    LoaderBridge loader(&api);
-    AuthBridge auth(&theme, &api);   // конструктор: (ThemeManager*, ApiClient*, QObject*)
+    // 3) Сеть/бриджи
+    ApiClient api;                      // базовый сетевой клиент
+    LoaderBridge loader(&api);          // /ping
+    AuthBridge auth(&theme, &api);      // /api/login — нужен ThemeManager и ApiClient
 
     // 4) QML
     QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty(QStringLiteral("AppTheme"), &theme);
-    engine.rootContext()->setContextProperty(QStringLiteral("LoginCtl"),  &auth);
-    engine.rootContext()->setContextProperty(QStringLiteral("BootCtl"),   &loader);
 
-    const QUrl url(u"qrc:/qml/Splash.qml"_qs);
+    // Экспорт C++ объектов в QML
+    engine.rootContext()->setContextProperty("AppTheme", &theme);
+    engine.rootContext()->setContextProperty("LoginCtl", &auth);
+    engine.rootContext()->setContextProperty("LoaderCtl", &loader);
+
+    const QUrl url(QStringLiteral("qrc:/qml/Splash.qml")); // без _qs -> убираем warning
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated, &app,
                      [url](QObject *obj, const QUrl &objUrl) {
                          if (!obj && url == objUrl)
                              QCoreApplication::exit(-1);
                      },
                      Qt::QueuedConnection);
-
     engine.load(url);
+
     return app.exec();
 }
