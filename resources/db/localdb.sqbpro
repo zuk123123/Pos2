@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><sqlb_project><db path="/home/jez/Рабочий стол/Pos2/localdb.sqlite" readonly="0" foreign_keys="1" case_sensitive_like="0" temp_store="0" wal_autocheckpoint="1000" synchronous="2"/><attached/><window><main_tabs open="structure browser pragmas query" current="1"/></window><tab_structure><column_width id="0" width="300"/><column_width id="1" width="0"/><column_width id="2" width="100"/><column_width id="3" width="3579"/><column_width id="4" width="0"/><expanded_item id="0" parent="1"/><expanded_item id="1" parent="1"/><expanded_item id="2" parent="1"/><expanded_item id="3" parent="1"/></tab_structure><tab_browse><current_table name="4,11:mainlocal_prefs"/><default_encoding codec=""/><browse_table_settings><table schema="main" name="local_prefs" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_"><sort/><column_widths><column index="1" value="41"/><column index="2" value="89"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table></browse_table_settings></tab_browse><tab_sql><sql name="SQL 1">PRAGMA foreign_keys = ON;
+
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS local_prefs;
+DROP TABLE IF EXISTS themes;
+
+CREATE TABLE themes (
+    name            TEXT PRIMARY KEY,
+    screen_width    INTEGER DEFAULT 1920,
+    screen_height   INTEGER DEFAULT 1080,
+    ui_scale        REAL    DEFAULT 1.0,
+    font_small      INTEGER DEFAULT 12,
+    font_base       INTEGER DEFAULT 14,
+    font_large      INTEGER DEFAULT 18,
+    spacing         INTEGER DEFAULT 8,
+    radius          INTEGER DEFAULT 8,
+    padding         INTEGER DEFAULT 10,
+    primary_color   TEXT    DEFAULT '#3B82F6',
+    background      TEXT    DEFAULT '#111827',
+    text_color      TEXT    DEFAULT '#F9FAFB',
+    border_color    TEXT    DEFAULT '#333333',
+    input_bg        TEXT    DEFAULT '#1F2937',
+    button_bg       TEXT    DEFAULT '#374151',
+    button_text     TEXT    DEFAULT '#F9FAFB'
+);
+
+CREATE TABLE local_prefs (
+    login       TEXT PRIMARY KEY,
+    theme_name  TEXT NOT NULL,
+    FOREIGN KEY(theme_name) REFERENCES themes(name)
+);
+
+INSERT INTO themes
+(name, screen_width, screen_height, ui_scale,
+ font_small, font_base, font_large,
+ spacing, radius, padding,
+ primary_color, background, text_color, border_color, input_bg, button_bg, button_text)
+VALUES
+('Light', 1280, 800, 1.0, 12, 14, 18, 8, 8, 10,
+         '#2563EB', '#F3F4F6', '#111827', '#D1D5DB', '#FFFFFF', '#3B82F6', '#FFFFFF'),
+('Dark',  1280, 800, 1.0, 12, 14, 18, 8, 8, 10,
+         '#3B82F6', '#111827', '#F9FAFB', '#333333', '#1F2937', '#374151', '#F9FAFB');
+
+-- демо-префы (без паролей)
+INSERT INTO local_prefs (login, theme_name) VALUES
+('bob',   'Dark'),
+('alice', 'Light');
+</sql><current_tab id="0"/></tab_sql></sqlb_project>

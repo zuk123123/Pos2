@@ -1,0 +1,9 @@
+<RCC>
+  <qresource prefix="/">
+    <file>src/qml/Login.qml</file>
+    <file>src/qml/Splash.qml</file>
+    <file>src/qml/Main.qml</file>
+    <file>resources/fonts/NotoColorEmoji.ttf</file>
+  </qresource>
+</RCC>
+
