@@ -1,63 +1,181 @@
 #include "apiclient.h"
-#include "logging.h"
-#include <QtNetwork/QNetworkRequest>
-#include <QtNetwork/QNetworkReply>
-#include <QtNetwork/QSslConfiguration>
-#include <QtNetwork/QSslError>
-#include <QJsonObject>
-#include <QJsonDocument>
-#include <QEventLoop>
-#include <QTimer>
 
-ApiClient::ApiClient(QObject* parent)
-    : QObject(parent)
-{
-    connect(&m_nam, &QNetworkAccessManager::sslErrors,
-            this, [this](QNetworkReply* r, const QList<QSslError>& errs){
-                const auto u = r->request().url();
-                if (u.host() == QLatin1String("127.0.0.1")) {
-                    r->ignoreSslErrors();
-                    emit sslIgnored(u);
-                    LNET() << "SSL errors ignored for" << u.toString() << errs.size();
-                }
-            });
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QTimer>
+#include <QEventLoop>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QDebug>
+#include <QSslConfiguration>
+
+ApiClient::ApiClient(QObject *parent) : QObject(parent) {}
+
+void ApiClient::addAuth(QNetworkRequest &req) {
+    if (!m_jwt.isEmpty())
+        req.setRawHeader("Authorization", QByteArray("Bearer ").append(m_jwt.toUtf8()));
 }
 
-bool ApiClient::login(const QString& user, const QString& pass, QString* outTheme, QString* outError)
-{
-    if (outTheme) *outTheme = QString();
-    if (outError) *outError = QString();
+void ApiClient::ping() {
+    const QUrl url = m_base.resolved(QUrl("/ping"));
+    qInfo() << "[API] GET" << url;
 
-    const QUrl url = m_base.resolved(QUrl("/api/login"));
     QNetworkRequest req(url);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    QSslConfiguration ssl = QSslConfiguration::defaultConfiguration();
-    ssl.setProtocol(QSsl::TlsV1_2OrLater);
-    req.setSslConfiguration(ssl);
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Pos2/1.0 (+Qt)");
+    if (url.scheme().compare("https", Qt::CaseInsensitive) == 0) {
+        QSslConfiguration ssl = QSslConfiguration::defaultConfiguration();
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+        ssl.setProtocol(QSsl::TlsV1_2OrLater);
+#endif
+        req.setSslConfiguration(ssl);
+    }
+    auto *reply = m_nam.get(req);
+
+    connect(reply, &QNetworkReply::sslErrors, this, [reply](const QList<QSslError>& errs){
+        for (const auto &e : errs) qWarning() << "[SSL]" << e.errorString();
+    });
+    connect(reply, &QNetworkReply::errorOccurred, this, [reply,this](QNetworkReply::NetworkError e){
+        qWarning() << "[API][ERR]" << e << reply->errorString();
+        emit networkError(reply->errorString());
+    });
+    connect(reply, &QNetworkReply::finished, this, [reply,this]{
+        const int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray body = reply->readAll();
+        qInfo() << "[API][RESP]" << code << body.left(256);
+        if (reply->error() == QNetworkReply::NoError && code>=200 && code<300)
+            emit pingOk();
+        reply->deleteLater();
+    });
+}
+
+// login — как раньше, но мы теперь вытаскиваем token и кладём в m_jwt
+static QList<QByteArray> s_loginPaths() { return { "/api/login" }; }
+
+bool ApiClient::login(const QString &user, const QString &pass,
+                      QString *themeOut, QString *errOut)
+{
+    if (errOut) errOut->clear();
+    if (themeOut) themeOut->clear();
 
     QJsonObject payload{{"login", user}, {"password", pass}};
-    QNetworkReply* rp = m_nam.post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    const QByteArray data = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+
+    QNetworkRequest req;
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Pos2/1.0 (+Qt)");
+
+    auto doPost = [&](const QUrl &url)->std::pair<int,QByteArray> {
+        QEventLoop loop;
+        QTimer timer; timer.setSingleShot(true); timer.setInterval(10000);
+
+        if (url.scheme().compare("https", Qt::CaseInsensitive) == 0) {
+            QSslConfiguration ssl = QSslConfiguration::defaultConfiguration();
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+            ssl.setProtocol(QSsl::TlsV1_2OrLater);
+#endif
+            req.setSslConfiguration(ssl);
+        }
+        req.setUrl(url);
+        QNetworkReply *reply = m_nam.post(req, data);
+
+        connect(&timer, &QTimer::timeout, &loop, [&]{ if (reply) reply->abort(); loop.quit(); });
+        connect(reply, &QNetworkReply::finished, &loop, [&]{ loop.quit(); });
+
+        timer.start();
+        loop.exec();
+
+        const int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray body = reply->readAll();
+        const auto err = reply->error();
+        reply->deleteLater();
+
+        if (err != QNetworkReply::NoError) {
+            qWarning() << "[API][login][ERR]" << url << "HTTP" << code << body.left(256);
+            return {code?code:-1, body};
+        }
+        qInfo() << "[API][login][RESP]" << url << "HTTP" << code << body.left(256);
+        return {code, body};
+    };
+
+    for (const auto &p : s_loginPaths()) {
+        const QUrl url = m_base.resolved(QUrl(QString::fromUtf8(p)));
+        auto [code, body] = doPost(url);
+        if (code >= 200 && code < 300) {
+            QJsonParseError jerr{};
+            QJsonDocument doc = QJsonDocument::fromJson(body, &jerr);
+            if (jerr.error == QJsonParseError::NoError && doc.isObject()) {
+                const QJsonObject o = doc.object();
+                const QString theme = o.value(QStringLiteral("themeName")).toString();
+                const QString token = o.value(QStringLiteral("token")).toString();
+                if (!token.isEmpty()) m_jwt = token;
+                if (themeOut && !theme.isEmpty()) *themeOut = theme;
+                const bool ok = o.value(QStringLiteral("ok")).toBool(true);
+                if (ok) return true;
+            }
+            // если сервер вернул 2xx, но не JSON — пусть будет фейл
+        }
+    }
+    if (errOut) *errOut = QStringLiteral("auth");
+    return false;
+}
+
+bool ApiClient::setUserThemeOnServer(const QString &themeName, QString *errOut)
+{
+    if (errOut) *errOut = QString();
+    const QUrl url = m_base.resolved(QUrl("/api/me/theme"));
+    QNetworkRequest req(url);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Pos2/1.0 (+Qt)");
+    addAuth(req);
+
+    const QJsonObject payload{{"themeName", themeName}};
+    const QByteArray data = QJsonDocument(payload).toJson(QJsonDocument::Compact);
 
     QEventLoop loop;
-    QTimer to; to.setInterval(3000); to.setSingleShot(true);
-    QObject::connect(&to, &QTimer::timeout, &loop, &QEventLoop::quit);
-    QObject::connect(rp, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    to.start(); loop.exec();
+    QNetworkReply *reply = m_nam.put(req, data);
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
 
-    if (rp->isRunning()) { rp->abort(); rp->deleteLater(); if(outError)*outError="timeout"; return false; }
+    const int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QByteArray body = reply->readAll();
+    const auto err = reply->error();
+    reply->deleteLater();
 
-    const auto err = rp->error();
-    const QByteArray body = rp->readAll();
-    rp->deleteLater();
+    if (err != QNetworkReply::NoError || code < 200 || code >= 300) {
+        if (errOut) *errOut = QString::fromUtf8(body);
+        qWarning() << "[API] setUserThemeOnServer fail" << code << body.left(200);
+        return false;
+    }
+    qInfo() << "[API] setUserThemeOnServer OK";
+    return true;
+}
 
-    if (err != QNetworkReply::NoError) { if(outError)*outError="network"; return false; }
+bool ApiClient::upsertThemeOnServer(const QJsonObject &themeDef, QString *errOut)
+{
+    if (errOut) *errOut = QString();
+    const QUrl url = m_base.resolved(QUrl("/api/themes"));
+    QNetworkRequest req(url);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    req.setHeader(QNetworkRequest::UserAgentHeader, "Pos2/1.0 (+Qt)");
+    addAuth(req);
 
-    QJsonParseError pe{};
-    const auto jd = QJsonDocument::fromJson(body, &pe);
-    if (pe.error != QJsonParseError::NoError || !jd.isObject()) { if(outError)*outError="bad json"; return false; }
+    const QByteArray data = QJsonDocument(themeDef).toJson(QJsonDocument::Compact);
 
-    const auto obj = jd.object();
-    if (!obj.value("ok").toBool(false)) { if(outError)*outError="auth"; return false; }
-    if (outTheme) *outTheme = obj.value("themeName").toString("Dark");
+    QEventLoop loop;
+    QNetworkReply *reply = m_nam.post(req, data);
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    const int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QByteArray body = reply->readAll();
+    const auto err = reply->error();
+    reply->deleteLater();
+
+    if (err != QNetworkReply::NoError || code < 200 || code >= 300) {
+        if (errOut) *errOut = QString::fromUtf8(body);
+        qWarning() << "[API] upsertThemeOnServer fail" << code << body.left(200);
+        return false;
+    }
+    qInfo() << "[API] upsertThemeOnServer OK";
     return true;
 }

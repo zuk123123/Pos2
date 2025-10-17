@@ -6,18 +6,26 @@
 class ApiClient : public QObject {
     Q_OBJECT
 public:
-    explicit ApiClient(QObject* parent=nullptr);
+    explicit ApiClient(QObject *parent = nullptr);
+    void setBaseUrl(const QUrl &url) { m_base = url; }
+    Q_INVOKABLE void ping();
 
-    void setBaseUrl(const QUrl& url) { m_base = url; }
-    QUrl  baseUrl() const { return m_base; }
+    // login: парсит token и сохраняет его внутри клиента
+    bool login(const QString &user, const QString &pass,
+               QString *themeOut, QString *errOut);
 
-    // sync login with small event loop (as было)
-    bool login(const QString& user, const QString& pass, QString* outTheme, QString* outError);
+    // серверные настройки темы (требуют JWT внутри)
+    bool setUserThemeOnServer(const QString &themeName, QString *errOut = nullptr);
+    bool upsertThemeOnServer(const QJsonObject &themeDef, QString *errOut = nullptr);
 
 signals:
-    void sslIgnored(const QUrl&);
+    void networkError(QString);
+    void pingOk();
 
 private:
     QNetworkAccessManager m_nam;
-    QUrl m_base; // e.g. https://127.0.0.1:9443
+    QUrl m_base;
+    QString m_jwt; // <- хранится тут
+
+    void addAuth(QNetworkRequest &req);
 };

@@ -6,9 +6,10 @@ Item {
     id: root
     property var router
 
-    // 🔹 Если ты регистрируешь в C++ как Auth — оставь как есть.
-    // Если как LoginCtl — замени Auth на LoginCtl.
-    readonly property var loginCtl: (typeof Auth !== "undefined") ? Auth : null
+    readonly property var loginCtl:
+        (typeof LoginCtl !== "undefined" && LoginCtl) ? LoginCtl :
+        ((typeof Auth !== "undefined" && Auth) ? Auth : null)
+
     readonly property var _themeObj: (typeof AppTheme !== "undefined" && AppTheme) ? AppTheme : null
 
     readonly property real s: (_themeObj && _themeObj.fontScale) ? _themeObj.fontScale : 1.0
@@ -38,7 +39,6 @@ Item {
         property int formWidth: Math.min(sp(380), card.width - 2*t.margin)
 
         Column {
-            id: content
             spacing: t.spacing
             anchors.centerIn: parent
             width: card.formWidth
@@ -78,12 +78,13 @@ Item {
                     leftPadding: sp(12)
                     rightPadding: sp(12 + 36 + 8)
                     background: Rectangle { radius: t.corner; color: t.fieldBg; border.color: t.border }
-                    Keys.onReturnPressed: btnLogin.click()   // 🔹 исправлено
+                    Keys.onReturnPressed: btnLogin.click()
                     enabled: !loginCtl || !loginCtl.busy
                     color: t.text
                     placeholderTextColor: t.subtext
                 }
 
+                // глазик
                 Rectangle {
                     id: eyeBtn
                     width: sp(36); height: sp(36)
@@ -119,14 +120,12 @@ Item {
                             ctx.lineJoin = "round";
                             const w = width, h = height;
                             const cx = w/2, cy = h/2;
-
                             ctx.beginPath();
                             ctx.moveTo(w*0.1, cy);
                             ctx.quadraticCurveTo(cx, h*0.05, w*0.9, cy);
                             ctx.quadraticCurveTo(cx, h*0.95, w*0.1, cy);
                             ctx.closePath();
                             ctx.stroke();
-
                             if (eyeBtn.open) {
                                 ctx.beginPath();
                                 ctx.arc(cx, cy, Math.min(w,h)*0.18, 0, Math.PI*2);
@@ -185,6 +184,13 @@ Item {
                     if (loginCtl && loginCtl.login) {
                         const ok = loginCtl.login(u, p)
                         console.log("[Login] click user=", u, " pass.len=", p.length, " ->", ok)
+                        if (ok && root.router) {
+                            if (root.router.setUser) root.router.setUser(u)
+                            // если есть SettingsCtl — сообщим текущего пользователя
+                            if (typeof SettingsCtl !== "undefined" && SettingsCtl && SettingsCtl.hasOwnProperty("currentUser"))
+                                SettingsCtl.currentUser = u
+                            if (root.router.goMenu)  root.router.goMenu()
+                        }
                     }
                 }
             }
@@ -199,13 +205,5 @@ Item {
             }
         }
     }
-
-    Connections {
-        target: loginCtl
-        enabled: loginCtl !== null
-        ignoreUnknownSignals: true
-        function onLoginSuccess() {
-            if (router && router.goMenu) router.goMenu()
-        }
-    }
 }
+

@@ -1,39 +1,44 @@
 #pragma once
 #include <QString>
+#include <QStringList>
 #include <optional>
 
-struct ThemeRow {
-    QString name;
-    int     screenWidth  = 0;
-    int     screenHeight = 0;
-    double  uiScale      = 1.0;
+struct ThemeRow;
 
-    int fontSmall = 12;
-    int fontBase  = 14;
-    int fontLarge = 18;
+namespace DbLayer {
 
-    int spacing = 8;
-    int radius  = 8;
-    int padding = 10;
+// Открыть/создать БД по конкретному пути (должен вызываться из main.cpp)
+bool openOrCreate(const QString& sqlitePath);
 
-    QString primaryColor;
-    QString background;
-    QString text;
-    QString border;
-    QString inputBg;
-    QString buttonBg;
-    QString buttonText;
-};
+// Схема + seed
+bool ensureSchemaAndSeed();
 
-class DbLayer {
-public:
-    static bool openOrCreate(QString* outPath = nullptr);     // открывает/создаёт localdb.sqlite
-    static bool ensureSchemaAndSeed();                         // создаёт таблицы и базовые темы при необходимости
-    static std::optional<ThemeRow> readThemeByName(const QString& name);
-    static ThemeRow readInitialTheme();
-    static bool updateThemeScreen(const QString& themeName, int w, int h);
+// Темы
+bool readThemeRowByName(const QString& name, ThemeRow* out);
+void writeThemeByName(const QString& name);
 
-    // локальный кэш предпочтений пользователя
-    static bool upsertLocalTheme(const QString& login, const QString& themeName);
-    static std::optional<QString> readLocalTheme(const QString& login);
-};
+// НОВОЕ: список имён тем (для SettingsBridge/Settings.qml)
+QStringList listThemeNames();
+
+// НОВОЕ: upsert кастомной/переопределённой темы
+bool upsertTheme(const ThemeRow& t);
+
+// Пользователи
+int  upsertUserLogin(const QString& login);            // возвращает user_id (локальный)
+std::optional<int> getUserIdByLogin(const QString& login);
+
+// Настройки пользователя
+std::optional<QString> getUserTheme(int userId);
+bool setUserTheme(int userId, const QString& themeName);
+
+// Локальный кэш маппинга login->theme (старый интерфейс, чтобы не ломать текущую логику)
+std::optional<QString> readLocalTheme(const QString& login);
+void upsertLocalTheme(const QString& login, const QString& theme_name);
+
+// Начальная тема
+ThemeRow readInitialTheme();
+
+// Инфо о экране
+void upsertScreenInfo(int width, int height, double dpi, double dpr, double scale);
+
+} // namespace DbLayer

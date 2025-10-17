@@ -1,21 +1,14 @@
 <RCC>
-  <!-- QML -->
-  <qresource prefix="/qml">
-    <file>src/qml/Splash.qml</file>
-    <file>src/qml/Login.qml</file>
-    <file>src/qml/Main.qml</file>
-    <file>src/qml/Theme.qml</file>
-  </qresource>
-
-  <!-- Шрифты -->
-  <qresource prefix="/fonts">
-    <file>resources/fonts/NotoColorEmoji.ttf</file>
-  </qresource>
-
-  <!-- Локальная БД для первого запуска (если нужно) -->
-  <qresource prefix="/db">
-    <!-- alias, чтобы внутри ресурса называлась просто localdb.sqlite -->
-    <file alias="localdb.sqlite">resources/db/localdb.sqlite</file>
-  </qresource>
+    <qresource prefix="/">
+        <file alias="Splash.qml">src/qml/Splash.qml</file>
+        <file alias="Login.qml">src/qml/Login.qml</file>
+        <file alias="Menu.qml">src/qml/Menu.qml</file>
+        <file alias="Settings.qml">src/qml/Settings.qml</file>
+        <file alias="HeaderBar.qml">src/qml/HeaderBar.qml</file>
+        <file alias="Theme.qml">src/qml/Theme.qml</file>
+        <file alias="fonts/Inter.ttf">resources/fonts/Inter-VariableFont_opsz,wght.ttf</file>
+        <file alias="fonts/NotoColorEmoji.ttf">resources/fonts/NotoColorEmoji.ttf</file>
+        <file>src/net/settingsbridge.h</file>
+        <file>src/net/settingsbridge.cpp</file>
+    </qresource>
 </RCC>
-

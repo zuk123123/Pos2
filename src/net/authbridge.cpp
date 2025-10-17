@@ -1,39 +1,44 @@
+#include <QDebug>
 #include "authbridge.h"
 #include "thememanager.h"
 #include "apiclient.h"
 #include "db.h"
-#include "logging.h"
 
 AuthBridge::AuthBridge(ThemeManager* theme, ApiClient* api, QObject* parent)
     : QObject(parent), m_theme(theme), m_api(api)
 {}
 
+// authbridge.cpp (исправленный фрагмент)
 bool AuthBridge::login(const QString& user, const QString& pass)
 {
-    LNET().noquote() << "[Auth] login() user=" << user << " len(pass)=" << pass.size();
+    qInfo() << "[Auth] login() user=" << user << " len(pass)=" << pass.size();
     setError(QString());
     setBusy(true);
 
-    QString theme, err;
-    const bool ok = m_api && m_api->login(user, pass, &theme, &err);
+    QString themeFromServer;
+    QString err;
+    const bool ok = m_api && m_api->login(user, pass, &themeFromServer, &err);
+
+    setBusy(false);
 
     if (!ok) {
-        if (err == "auth") setError("Неверный логин или пароль");
-        else setError("Ошибка сети");
-        setBusy(false);
-
-        if (auto cached = DbLayer::readLocalTheme(user)) {
-            if (m_theme) m_theme->applyByName(*cached);
-            emit loginSuccess();
-            return true; // оффлайн вход по теме
-        }
+        // Строго: при неуспехе НИКУДА не пускаем
+        if (err == "auth") setError(QStringLiteral("Неверный логин или пароль"));
+        else               setError(QStringLiteral("Ошибка сети"));
         return false;
     }
 
-    if (m_theme) m_theme->applyByName(theme);
-    DbLayer::upsertLocalTheme(user, theme);
-    setBusy(false);
+    // Успешный логин → применяем тему и пускаем внутрь
+    DbLayer::upsertLocalTheme(user, themeFromServer);
+    if (m_theme) {
+        ThemeRow row;
+        if (DbLayer::readThemeRowByName(themeFromServer, &row))
+            m_theme->applyRow(row);
+        else
+            m_theme->applyByName(themeFromServer);
+    }
     emit loginSuccess();
     return true;
 }
+
 
